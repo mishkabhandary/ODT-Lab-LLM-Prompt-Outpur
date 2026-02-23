@@ -1,0 +1,193 @@
+from machine import Pin, PWM
+import neopixel
+import time
+import random
+
+# ---------- SETUP ----------
+pixels = neopixel.NeoPixel(Pin(2), 16)
+
+servo = PWM(Pin(13))
+servo.freq(50)
+
+# Use PWM for buzzer (for tone control)
+buzzer = PWM(Pin(23))
+buzzer.freq(1000)
+buzzer.duty(0)
+
+trig = Pin(5, Pin.OUT)
+echo = Pin(18, Pin.IN)
+
+# ---------- CONTROLLED WIN SYSTEM ----------
+results = [True, True, False, False, False]
+
+# Manual shuffle (MicroPython compatible)
+for i in range(len(results)):
+    j = random.randint(0, len(results)-1)
+    results[i], results[j] = results[j], results[i]
+
+round_counter = 0
+
+# ---------- SERVO ----------
+def lever_down():
+    servo.duty(40)
+
+def lever_up():
+    servo.duty(75)
+
+# ---------- LED HELPERS ----------
+def clear():
+    for i in range(16):
+        pixels[i] = (0,0,0)
+    pixels.write()
+
+def show_position(pos, color):
+    clear()
+    pixels[pos] = color
+    pixels.write()
+
+# ---------- ULTRASONIC ----------
+def get_distance():
+    trig.value(0)
+    time.sleep_us(2)
+    trig.value(1)
+    time.sleep_us(10)
+    trig.value(0)
+
+    while echo.value() == 0:
+        pass
+    start = time.ticks_us()
+
+    while echo.value() == 1:
+        pass
+    end = time.ticks_us()
+
+    duration = time.ticks_diff(end, start)
+    distance = (duration * 0.0343) / 2
+    return distance
+
+# ---------- IDLE BREATHING ----------
+def idle_breath():
+    for b in range(0, 60, 4):
+        for i in range(16):
+            pixels[i] = (b,b,b)
+        pixels.write()
+        time.sleep(0.02)
+    for b in range(60, 0, -4):
+        for i in range(16):
+            pixels[i] = (b,b,b)
+        pixels.write()
+        time.sleep(0.02)
+
+# ---------- WIN SOUND ----------
+def beep_fast():
+    for i in range(10):
+        buzzer.freq(1500)
+        buzzer.duty(512)
+        time.sleep(0.05)
+        buzzer.duty(0)
+        time.sleep(0.05)
+
+# ---------- LOSS SOUND (WOMP WOMP) ----------
+def womp_womp():
+    # First tone
+    buzzer.freq(400)
+    buzzer.duty(512)
+    time.sleep(0.4)
+    buzzer.duty(0)
+    time.sleep(0.1)
+
+    # Lower tone
+    buzzer.freq(250)
+    buzzer.duty(512)
+    time.sleep(0.5)
+    buzzer.duty(0)
+
+# ---------- START ----------
+lever_up()
+clear()
+
+while True:
+
+    # 1️⃣ IDLE MODE
+    idle_breath()
+
+    distance = get_distance()
+
+    # Detect swipe
+    if distance < 6:
+
+        # 2️⃣ LEVER SLAM
+        lever_down()
+        time.sleep(0.4)
+        lever_up()
+
+        # 🎲 RANDOM SPIN
+        position = random.randint(0, 15)
+        fast_spins = random.randint(30, 60)
+        slow_spins = random.randint(20, 40)
+
+        delay = 0.02
+
+        # FAST SPIN
+        for i in range(fast_spins):
+            show_position(position, (255,255,255))
+            position = (position + 1) % 16
+            time.sleep(delay)
+
+        # SLOW DOWN
+        for i in range(slow_spins):
+            show_position(position, (255,255,255))
+            position = (position + 1) % 16
+            delay += 0.01
+            time.sleep(delay)
+
+        final_pos = position
+
+        # 4️⃣ FINAL FLASH
+        for i in range(3):
+            show_position(final_pos, (255,255,255))
+            time.sleep(0.2)
+            clear()
+            time.sleep(0.2)
+
+        # 5️⃣ CONTROLLED WIN / LOSE
+        win = results[round_counter]
+        round_counter += 1
+
+        if round_counter >= 5:
+            # Reshuffle manually
+            for i in range(len(results)):
+                j = random.randint(0, len(results)-1)
+                results[i], results[j] = results[j], results[i]
+            round_counter = 0
+
+        if win:
+            print("JACKPOT!")
+
+            # Rainbow explosion
+            for i in range(16):
+                pixels[i] = (
+                    random.randint(0,255),
+                    random.randint(0,255),
+                    random.randint(0,255)
+                )
+            pixels.write()
+
+            beep_fast()
+
+        else:
+            print("LOSE")
+
+            # Red pulse
+            for i in range(3):
+                for j in range(16):
+                    pixels[j] = (255,0,0)
+                pixels.write()
+                time.sleep(0.3)
+                clear()
+                time.sleep(0.3)
+
+            womp_womp()
+
+        clear()
+        time.sleep(1)
