@@ -1,0 +1,74 @@
+from machine import Pin, time_pulse_us
+import neopixel
+import time
+
+TRIG = 5
+ECHO = 18
+BUZZER = 23
+LED_PIN = 4
+NUM_LEDS = 16
+
+trig = Pin(TRIG, Pin.OUT)
+echo = Pin(ECHO, Pin.IN)
+buzzer = Pin(BUZZER, Pin.OUT, value=0)
+np = neopixel.NeoPixel(Pin(LED_PIN), NUM_LEDS)
+
+def set_leds(count):
+    for i in range(NUM_LEDS):
+        if i < count:
+            np[i] = (255, 0, 0)
+        else:
+            np[i] = (0, 0, 0)
+    np.write()
+
+while True:
+
+    # Trigger ultrasonic
+    trig.off()
+    time.sleep_us(2)
+    trig.on()
+    time.sleep_us(10)
+    trig.off()
+
+    try:
+        duration = time_pulse_us(echo, 1, 30000)
+        distance = (duration * 0.034) / 2
+    except:
+        distance = 999
+
+    print("Distance:", distance)
+
+    # NO OBJECT
+    if distance > 30:
+        set_leds(0)
+        buzzer.off()
+        print("No motion detected")
+        time.sleep(0.2)
+        continue
+
+    # LED calculation
+    leds_on = int((30 - distance) / 2) + 1
+    if leds_on < 0:
+        leds_on = 0
+    if leds_on > NUM_LEDS:
+        leds_on = NUM_LEDS
+
+    set_leds(leds_on)
+
+    # Buzzer speeds
+    if distance <= 5:
+        print("STOP! TOO CLOSE")
+        delay = 0.05   #  FAST 
+
+    elif distance <= 15:
+        print("Perfect! Proceed")
+        delay = 0.25   # medium
+
+    else:
+        print("Object detected")
+        delay = 0.6    # slow
+
+    buzzer.on()
+    time.sleep(delay)
+    buzzer.off()
+    time.sleep(delay)
